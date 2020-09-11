@@ -31,27 +31,7 @@
 			dispatchJob(createJob('bind_rename_domain', ['oldName' => $oldName, 'domain' => $domain->getDomainRaw()]));
 		});
 
-		EventQueue::get()->subscribe('domain.delete', function($domainid, $domainRaw) {
-			dispatchJob(createJob('bind_delete_domain', ['domain' => $domainRaw]));
-		});
-
-		EventQueue::get()->subscribe('domain.records.changed', function($domainid) {
-			$domain = Domain::load(DB::get(), $domainid);
-
-			$domains = [];
-			$domains[] = $domain;
-
-			$checkDomains = $domain->getAliases();
-
-			while ($alias = array_shift($checkDomains)) {
-				$domains[] = $alias;
-				$checkDomains = array_merge($checkDomains, $alias->getAliases());
-			}
-
-			foreach ($domains as $d) {
-				dispatchJob(createJob('bind_records_changed', ['domain' => $d->getDomainRaw()]));
-			}
-
+		$updateDependants = function($domainid) {
 			// Find any domains that also need to change.
 			$s = new Search(DB::get()->getPDO(), 'records', ['domain_id']);
 			$s->where('remote_domain_id', $domainid);
@@ -67,7 +47,30 @@
 				$dependent->updateSerial();
 				dispatchJob(createJob('bind_records_changed', ['domain' => $dependent->getDomainRaw()]));
 			}
+		};
 
+		EventQueue::get()->subscribe('domain.delete', function($domainid, $domainRaw) use ($updateDependants) {
+			dispatchJob(createJob('bind_delete_domain', ['domain' => $domainRaw]));
+			call_user_func_array($updateDependants, [$domainid]);
+		});
+
+		EventQueue::get()->subscribe('domain.records.changed', function($domainid) use ($updateDependants) {
+			$domain = Domain::load(DB::get(), $domainid);
+
+			$domains = [];
+			$domains[] = $domain;
+
+			$checkDomains = $domain->getAliases();
+
+			while ($alias = array_shift($checkDomains)) {
+				$domains[] = $alias;
+				$checkDomains = array_merge($checkDomains, $alias->getAliases());
+			}
+
+			foreach ($domains as $d) {
+				dispatchJob(createJob('bind_records_changed', ['domain' => $d->getDomainRaw()]));
+			}
+			call_user_func_array($updateDependants, [$domainid]);
 		});
 
 		EventQueue::get()->subscribe('domain.sync', function($domainid) {
