@@ -51,6 +51,23 @@
 			foreach ($domains as $d) {
 				dispatchJob(createJob('bind_records_changed', ['domain' => $d->getDomainRaw()]));
 			}
+
+			// Find any domains that also need to change.
+			$s = new Search(DB::get()->getPDO(), 'records', ['domain_id']);
+			$s->where('remote_domain_id', $domainid);
+			// TODO: UNHACK THIS.
+			// We're horrible abusing how php-db handles `limit` clauses here and we should
+			// not do this.
+			$s->addOperation(new class(0) extends shanemcc\phpdb\Operations\Limit { public function __toString() { return ' GROUP BY `domain_id`'; } });
+
+			foreach ($s->getRows() as $r) {
+				// Bump the serial and rebuild any domains that also might need
+				// to change.
+				$dependent = Domain::load(DB::get(), $r['domain_id']);
+				$dependent->updateSerial();
+				dispatchJob(createJob('bind_records_changed', ['domain' => $dependent->getDomainRaw()]));
+			}
+
 		});
 
 		EventQueue::get()->subscribe('domain.sync', function($domainid) {
