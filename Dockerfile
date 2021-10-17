@@ -1,4 +1,4 @@
-FROM mydnshost/mydnshost-api AS api
+FROM mydnshost/mydnshost-api-base AS api
 
 FROM mydnshost/mydnshost-api-docker-base:latest
 MAINTAINER Shane Mc Cormack <dataforce@dataforce.org.uk>
