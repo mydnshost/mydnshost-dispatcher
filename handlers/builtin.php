@@ -11,3 +11,6 @@
 		dispatchJob(createJob('verify_2fa_push', ['keyid' => $key->getID(), 'userid' => $key->getUserID(), 'message' => $message]));
 	});
 
+	EventQueue::get()->subscribe('cron.hourly', function() {
+		dispatchJob(createJob('verify_domains', []));
+	});
