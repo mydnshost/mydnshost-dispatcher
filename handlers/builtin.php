@@ -14,7 +14,7 @@
 	EventQueue::get()->subscribe('domain.verify', function($domainid) {
 		$domain = Domain::load(DB::get(), $domainid);
 
-		dispatchJob(createJob('verify_domain', ['domain' => $domain->getDomainRaw()));
+		dispatchJob(createJob('verify_domain', ['domain' => $domain->getDomainRaw()]));
 	});
 
 	EventQueue::get()->subscribe('cron.hourly', function() {
