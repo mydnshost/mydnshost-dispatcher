@@ -15,6 +15,7 @@
 	// $config['hooks']['powerdns']['slaves'] = [['host' => '192.168.0.2', 'port' => '1080', 'apikey' => 'myapikey'],
 	//                                  ['host' => '192.168.0.3', 'port' => '1080', 'apikey' => 'myapikey']];
 
+	/*
 	if (isset($config['hooks']['powerdns']['enabled']) && parseBool($config['hooks']['powerdns']['enabled'])) {
 
 		$config['hooks']['powerdns']['defaults']['masters'] = [];
@@ -76,7 +77,7 @@
 		};
 
 		HookManager::get()->addHook('add_domain', $updateMasterServer);
-		HookManager::get()->addHook('records_changed', function($domain) {
+		HookManager::get()->addHook('records_changed', function($domain) use ($updateMasterServer) {
 			$domains = [];
 			$domains[] = $domain;
 
@@ -90,9 +91,9 @@
 			foreach ($domains as $d) {
 				call_user_func_array($updateMasterServer, [$d]);
 			}
-		);
+		});
 
-		HookManager::get()->addHook('rename_domain', function($oldName, $domain) {
+		HookManager::get()->addHook('rename_domain', function($oldName, $domain) use ($updateMasterServer, $pdnsConfig) {
 			foreach (array_merge($pdnsConfig['masters'], $pdnsConfig['slaves']) as $server) {
 				$pdns = new PowerDNS($server, $oldName);
 				$pdns->removeDomain();
@@ -108,3 +109,4 @@
 			}
 		});
 	}
+*/
