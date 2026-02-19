@@ -42,12 +42,10 @@
 
 			$parentId = ($parentJob !== null) ? $parentJob->getID() : null;
 			foreach ($s->getRows() as $r) {
-				// Bump the serial and rebuild any domains that also might need
-				// to change.
 				$dependent = Domain::load(DB::get(), $r['domain_id']);
 				echo showTime(), ' ', 'Updating dependent domain ', $dependent->getDomainRaw(), ' (has records referencing ', $reason, ')', "\n";
-				$dependent->updateSerial();
-				dispatchJob(createJob('bind_records_changed', ['domain' => $dependent->getDomainRaw()], 'Has records referencing ' . $reason, $parentId));
+				// Serial bump deferred to worker - only bumped if RRCLONE expansion actually changed
+				dispatchJob(createJob('bind_records_changed', ['domain' => $dependent->getDomainRaw(), '__dependant' => true], 'Has records referencing ' . $reason, $parentId));
 			}
 		};
 
@@ -62,10 +60,13 @@
 
 			$domains = [];
 			$domains[] = $domain;
+			$seen = [$domain->getID() => true];
 
 			$checkDomains = $domain->getAliases();
 
 			while ($alias = array_shift($checkDomains)) {
+				if (isset($seen[$alias->getID()])) { continue; }
+				$seen[$alias->getID()] = true;
 				echo showTime(), ' ', 'Including alias domain ', $alias->getDomainRaw(), ' (alias of ', $domain->getDomainRaw(), ')', "\n";
 				$domains[] = $alias;
 				$checkDomains = array_merge($checkDomains, $alias->getAliases());
@@ -83,8 +84,8 @@
 				$job = createJob('bind_records_changed', ['domain' => $d->getDomainRaw()], $jobReason, $parentId);
 				if ($primaryJob === null) { $primaryJob = $job; }
 				dispatchJob($job);
+				call_user_func_array($updateDependants, [$d->getID(), $d->getDomainRaw(), $primaryJob]);
 			}
-			call_user_func_array($updateDependants, [$domainid, $domain->getDomainRaw(), $primaryJob]);
 		});
 
 		EventQueue::get()->subscribe('domain.sync', function($domainid) {
