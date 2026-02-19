@@ -9,8 +9,8 @@
 
 	echo showTime(), ' ', 'Job Dispatcher started.', "\n";
 
-	function createJob($job, $args) {
-		return JobQueue::get()->create($job, $args);
+	function createJob($job, $args, $reason = null) {
+		return JobQueue::get()->create($job, $args, $reason);
 	}
 
 	function dispatchJob($job) {
