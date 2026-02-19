@@ -22,13 +22,13 @@
 		EventQueue::get()->subscribe('domain.add', function($domainid) {
 			$domain = Domain::load(DB::get(), $domainid);
 
-			dispatchJob(createJob('bind_add_domain', ['domain' => $domain->getDomainRaw()], 'Domain added' . actorSuffix()));
+			dispatchJob(createJob('bind_add_domain', ['domain' => $domain->getDomainRaw()], $domain->getDomainRaw() . ' added' . actorSuffix()));
 		});
 
 		EventQueue::get()->subscribe('domain.rename', function($oldName, $domainid) {
 			$domain = Domain::load(DB::get(), $domainid);
 
-			dispatchJob(createJob('bind_rename_domain', ['oldName' => $oldName, 'domain' => $domain->getDomainRaw()], 'Domain renamed from ' . $oldName . actorSuffix()));
+			dispatchJob(createJob('bind_rename_domain', ['oldName' => $oldName, 'domain' => $domain->getDomainRaw()], $domain->getDomainRaw() . ' renamed from ' . $oldName . actorSuffix()));
 		});
 
 		$updateDependants = function($domainid, $reason, $parentJob = null) {
@@ -45,12 +45,12 @@
 				$dependent = Domain::load(DB::get(), $r['domain_id']);
 				echo showTime(), ' ', 'Updating dependent domain ', $dependent->getDomainRaw(), ' (has records referencing ', $reason, ')', "\n";
 				// Serial bump deferred to worker - only bumped if RRCLONE expansion actually changed
-				dispatchJob(createJob('bind_records_changed', ['domain' => $dependent->getDomainRaw(), '__dependant' => true], 'Has records referencing ' . $reason, $parentId));
+				dispatchJob(createJob('bind_records_changed', ['domain' => $dependent->getDomainRaw(), '__dependant' => true], $dependent->getDomainRaw() . ' has records referencing ' . $reason, $parentId));
 			}
 		};
 
 		EventQueue::get()->subscribe('domain.delete', function($domainid, $domainRaw) use ($updateDependants) {
-			$deleteJob = createJob('bind_delete_domain', ['domain' => $domainRaw], 'Domain deleted' . actorSuffix());
+			$deleteJob = createJob('bind_delete_domain', ['domain' => $domainRaw], $domainRaw . ' deleted' . actorSuffix());
 			dispatchJob($deleteJob);
 			call_user_func_array($updateDependants, [$domainid, $domainRaw, $deleteJob]);
 		});
@@ -76,9 +76,9 @@
 			$primaryJob = null;
 			foreach ($domains as $d) {
 				if ($d === $domain) {
-					$jobReason = 'Records changed' . $suffix;
+					$jobReason = $d->getDomainRaw() . ' records changed' . $suffix;
 				} else {
-					$jobReason = 'Alias of ' . $domain->getDomainRaw() . $suffix;
+					$jobReason = $d->getDomainRaw() . ' is alias of ' . $domain->getDomainRaw() . $suffix;
 				}
 				$parentId = ($primaryJob !== null) ? $primaryJob->getID() : null;
 				$job = createJob('bind_records_changed', ['domain' => $d->getDomainRaw()], $jobReason, $parentId);
@@ -92,12 +92,12 @@
 			$domain = Domain::load(DB::get(), $domainid);
 			$suffix = actorSuffix();
 
-			$remove = createJob('bind_zone_changed', ['domain' => $domain->getDomainRaw(), 'change' => 'remove'], 'Domain sync' . $suffix . ': remove zone');
+			$remove = createJob('bind_zone_changed', ['domain' => $domain->getDomainRaw(), 'change' => 'remove'], $domain->getDomainRaw() . ' sync: remove zone' . $suffix);
 
-			$change = createJob('bind_records_changed', ['domain' => $domain->getDomainRaw(), '__wait' => 1], 'Domain sync' . $suffix . ': rebuild records');
+			$change = createJob('bind_records_changed', ['domain' => $domain->getDomainRaw(), '__wait' => 1], $domain->getDomainRaw() . ' sync: rebuild records' . $suffix);
 			$change->addDependency($remove->getID())->setState('blocked')->save();
 
-			$add = createJob('bind_zone_changed', ['domain' => $domain->getDomainRaw(), 'change' => 'add'], 'Domain sync' . $suffix . ': re-add zone');
+			$add = createJob('bind_zone_changed', ['domain' => $domain->getDomainRaw(), 'change' => 'add'], $domain->getDomainRaw() . ' sync: re-add zone' . $suffix);
 			$add->addDependency($change->getID())->setState('blocked')->save();
 
 			dispatchJob($remove);
