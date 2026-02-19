@@ -9,14 +9,34 @@
 
 	echo showTime(), ' ', 'Job Dispatcher started.', "\n";
 
-	function createJob($job, $args, $reason = null) {
-		return JobQueue::get()->create($job, $args, $reason);
+	function createJob($job, $args, $reason = null, $createdByJob = null) {
+		return JobQueue::get()->create($job, $args, $reason, $createdByJob);
 	}
 
 	function dispatchJob($job) {
 		echo showTime(), ' ', 'Dispatching: ', $job->getName(), '(', json_encode($job->getJobData()), ')', "\n";
 
 		JobQueue::get()->publish($job);
+	}
+
+	function actorSuffix() {
+		$actor = EventQueue::get()->getActor();
+		if ($actor === null) return '';
+
+		if (($actor['type'] ?? '') === 'domainkey') {
+			$desc = 'domainkey';
+			if (!empty($actor['key'])) $desc .= ' "' . $actor['key'] . '"';
+			if (!empty($actor['domain'])) $desc .= ' for ' . $actor['domain'];
+		} else {
+			$desc = $actor['email'] ?? 'unknown';
+			if (($actor['type'] ?? '') === 'apikey' && !empty($actor['key'])) {
+				$desc .= ' via apikey "' . $actor['key'] . '"';
+			}
+		}
+		if (!empty($actor['impersonator'])) {
+			$desc .= ' impersonated by ' . $actor['impersonator'];
+		}
+		return ' (' . $desc . ')';
 	}
 
 	foreach (recursiveFindFiles(__DIR__ . '/handlers') as $file) {
