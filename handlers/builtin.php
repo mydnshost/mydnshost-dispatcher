@@ -1,8 +1,8 @@
 <?php
 	use shanemcc\phpdb\DB;
 
-	EventQueue::get()->subscribe('mail.send', function($to, $subject, $message, $htmlmessage = NULL) {
-		dispatchJob(createJob('sendmail', ['to' => $to, 'subject' => $subject, 'message' => $message, 'htmlmessage' => $htmlmessage], 'Send email'));
+	EventQueue::get()->subscribe('mail.send', function($to, $subject, $message, $htmlmessage = NULL, $reason = NULL) {
+		dispatchJob(createJob('sendmail', ['to' => $to, 'subject' => $subject, 'message' => $message, 'htmlmessage' => $htmlmessage], ($reason ?? 'Send email: ' . $subject) . actorSuffix()));
 	});
 
 	EventQueue::get()->subscribe('2fa.push.verify', function($keyid, $message) {
