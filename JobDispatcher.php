@@ -39,12 +39,53 @@
 		return ' (' . $desc . ')';
 	}
 
+	/**
+	 * Start a blocked job if all of its dependencies have finished, or fail
+	 * it if any of them errored.
+	 *
+	 * @param $j Job to check.
+	 */
+	function tryStartJob($j) {
+		echo showTime(), ' ', "\t", 'Dependant: ', $j->getID(), "\n";
+
+		if (!in_array($j->getState(), ['created', 'blocked'])) {
+			echo showTime(), ' ', "\t\t", 'Job in invalid state for starting, ignoring.', "\n";
+			return;
+		}
+
+		$canRun = true;
+		foreach ($j->getDependsOn() as $j2) {
+			echo showTime(), ' ', "\t\t", 'Depends on: ', $j2->getID(), ' which has state: ', $j2->getState(), "\n";
+			if ($j2->getState() == 'error') {
+				echo showTime(), ' ', "\t\t", 'Job unable to run due to error, marking as failed.', "\n";
+
+				$resultMsg = 'PARENT ERROR';
+				$j->setState('error')->setResult($resultMsg)->save();
+				EventQueue::get()->publish('job.finished', [$j->getID(), $resultMsg]);
+				$canRun = false;
+			}
+
+			if ($j2->getState() != 'finished') {
+				echo showTime(), ' ', "\t\t", 'Job unable to run due to incomplete parent.', "\n";
+
+				$canRun = false;
+			}
+		}
+
+		if ($canRun) {
+			echo showTime(), ' ', "\t\t", 'Job able to be run, dispatching.', "\n";
+
+			$j->setState('created')->save();
+			dispatchJob($j);
+		}
+	}
+
 	foreach (recursiveFindFiles(__DIR__ . '/handlers') as $file) {
 		echo showTime(), ' ', 'Loading from: ', $file, "\n";
 		include_once($file);
 	}
 
-	EventQueue::get()->consumeEvents(function ($event) {
+	EventQueue::get()->consumeEvents('events.dispatcher', function ($event) {
 		if (is_array($event) && isset($event['event'])) {
 			echo showTime(), ' ', 'Event: ', $event['event'], '(', json_encode($event['args']), ')', "\n";
 
@@ -64,39 +105,11 @@
 
 		echo showTime(), ' ', 'Job Finished: ', $jobid, "\n";
 		foreach ($dependants as $j) {
-			echo showTime(), ' ', "\t", 'Dependant: ', $j->getID(), "\n";
-
-			if (!in_array($j->getState(), ['created', 'blocked'])) {
-				echo showTime(), ' ', "\t\t", 'Job in invalid state for starting, ignoring.', "\n";
-				continue;
-			}
-
-			$canRun = true;
-			foreach ($j->getDependsOn() as $j2) {
-				echo showTime(), ' ', "\t\t", 'Depends on: ', $j2->getID(), ' which has state: ', $j2->getState(), "\n";
-				if ($j2->getState() == 'error') {
-					echo showTime(), ' ', "\t\t", 'Job unable to run due to error, marking as failed.', "\n";
-
-					$resultMsg = 'PARENT ERROR';
-					$j->setState('error')->setResult($resultMsg)->save();
-					EventQueue::get()->publish('job.finished', [$j->getID(), $resultMsg]);
-					$canRun = false;
-				}
-
-				if ($j2->getState() != 'finished') {
-					echo showTime(), ' ', "\t\t", 'Job unable to run due to incomplete parent.', "\n";
-
-					$canRun = false;
-				}
-			}
-
-			if ($canRun) {
-				echo showTime(), ' ', "\t\t", 'Job able to be run, dispatching.', "\n";
-
-				$j->setState('created')->save();
-				dispatchJob($j);
-			}
+			tryStartJob($j);
 		}
 	});
+
+	// Catch anything that was missed while we weren't running.
+	sweepJobs();
 
 	RabbitMQ::get()->consume();
