@@ -41,11 +41,13 @@
 			$s->addOperation(new class(0) extends shanemcc\phpdb\Operations\Limit { public function __toString() { return ' GROUP BY `domain_id`'; } });
 
 			$parentId = ($parentJob !== null) ? $parentJob->getID() : null;
+			$actor = EventQueue::get()->getActor();
+			$suffix = actorSuffix();
 			foreach ($s->getRows() as $r) {
 				$dependent = Domain::load(DB::get(), $r['domain_id']);
 				echo showTime(), ' ', 'Updating dependent domain ', $dependent->getDomainRaw(), ' (has records referencing ', $reason, ')', "\n";
 				// Serial bump deferred to worker - only bumped if RRCLONE expansion actually changed
-				dispatchJob(createJob('bind_records_changed', ['domain' => $dependent->getDomainRaw(), '__dependant' => true], $dependent->getDomainRaw() . ' has records referencing ' . $reason, $parentId));
+				dispatchJob(createJob('bind_records_changed', ['domain' => $dependent->getDomainRaw(), '__dependant' => true, '__actor' => $actor], $dependent->getDomainRaw() . ' has records referencing ' . $reason . $suffix, $parentId));
 			}
 		};
 
