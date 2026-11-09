@@ -5,19 +5,25 @@
 	define('SWEEP_STUCK_AFTER', 300);
 
 	/**
-	 * Find jobs in the given states, created within the given range.
+	 * Find jobs in the given states, created (or started) within the given
+	 * range.
 	 *
 	 * @param $states Array of states.
-	 * @param $createdAfter Only jobs created at or after this time.
-	 * @param $createdBefore Only jobs created before this time.
+	 * @param $after Only jobs created/started at or after this time.
+	 * @param $before Only jobs created/started before this time.
 	 * @param $limit Maximum number of jobs to return.
+	 * @param $column Time column to check, 'created' or 'started'.
 	 * @return Array of Jobs.
 	 */
-	function findJobsByState($states, $createdAfter, $createdBefore, $limit = 1000) {
+	function findJobsByState($states, $after, $before, $limit = 1000, $column = 'created') {
+		if (!in_array($column, ['created', 'started'])) {
+			throw new Exception('Invalid column: ' . $column);
+		}
+
 		$placeholders = implode(', ', array_fill(0, count($states), '?'));
-		$query = 'SELECT `id` FROM `jobs` WHERE `state` IN (' . $placeholders . ') AND `created` >= ? AND `created` < ? ORDER BY `id` LIMIT ' . intval($limit);
+		$query = 'SELECT `id` FROM `jobs` WHERE `state` IN (' . $placeholders . ') AND `' . $column . '` >= ? AND `' . $column . '` < ? ORDER BY `id` LIMIT ' . intval($limit);
 		$statement = DB::get()->getPDO()->prepare($query);
-		$statement->execute(array_merge($states, [$createdAfter, $createdBefore]));
+		$statement->execute(array_merge($states, [$after, $before]));
 
 		return Job::findByID(DB::get(), $statement->fetchAll(PDO::FETCH_COLUMN)) ?: [];
 	}
@@ -41,6 +47,17 @@
 		foreach (findJobsByState(['created', 'blocked'], 0, $tooOld) as $job) {
 			echo showTime(), ' ', 'Sweeper: expiring ', $job->getState(), ' job: ', $job->getID(), "\n";
 			$job->setState('expired')->setFinished($now)->setResult('EXPIRED')->save();
+		}
+
+		// Started jobs that never finished, eg if the worker died part-way
+		// through. Nothing should take this long, so treat them as failed
+		// (which also fails any dependants) rather than trying to rerun
+		// something that may have partly happened.
+		foreach (findJobsByState(['started'], 0, $tooOld, 1000, 'started') as $job) {
+			echo showTime(), ' ', 'Sweeper: abandoning started job: ', $job->getID(), "\n";
+			$resultMsg = 'ABANDONED';
+			$job->setState('error')->setFinished($now)->setResult($resultMsg)->save();
+			EventQueue::get()->publish('job.finished', [$job->getID(), $resultMsg]);
 		}
 
 		// Blocked jobs whose dependencies are all done, eg if the job.finished
